@@ -1,0 +1,188 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Proton Floor Plan</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;600&family=Geist+Mono:wght@400&display=swap">
+<style>
+  /* Layout: one architectural plan filling a landscape screen; a zone picked draws its kit in and shows its notes inside it. */
+  :root {
+    --ground: #ffffff; --ink: #232327; --edge: #a4a4ac; --mid: #c3c3c9; --lo: #e3e3e8; --muted: #6f6f78;
+    --sans: "Geist", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+    --mono: "Geist Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) { --ground: #08090a; --ink: #d0d6e0; --edge: #5b5d64; --mid: #3e3e44; --lo: #232327; --muted: #8a8c95; color-scheme: dark; }
+  }
+  :root[data-theme="dark"] { --ground: #08090a; --ink: #d0d6e0; --edge: #5b5d64; --mid: #3e3e44; --lo: #232327; --muted: #8a8c95; color-scheme: dark; }
+  html, body { height: 100%; }
+  body { margin: 0; background: var(--ground); color: var(--ink); font-family: var(--sans); overflow: hidden; }
+  .wrap { height: 100%; display: grid; place-items: center; padding-inline: 16px; box-sizing: border-box; }
+  svg { width: 100%; height: 100%; max-height: 100%; display: block; user-select: none; -webkit-user-select: none; touch-action: manipulation; }
+  svg * { vector-effect: non-scaling-stroke; }
+  .wall { fill: none; stroke: var(--edge); stroke-width: 1; }
+  .col { pointer-events: none; fill: var(--ground); stroke: var(--mid); stroke-width: 0.9; }
+  .axis { fill: none; stroke: var(--lo); stroke-width: 0.9; stroke-dasharray: 2 5; }
+  .tick, .meta { font: 400 10px var(--mono); fill: var(--muted); letter-spacing: 0.08em; }
+  .door { fill: none; stroke: var(--mid); stroke-width: 0.9; }
+  .zone { cursor: pointer; outline: none; }
+  .zone .hit { fill: transparent; }
+  .zone .rim { fill: none; stroke: var(--mid); stroke-width: 1; transition: stroke 260ms ease; }
+  .zone:hover .rim, .zone:focus-visible .rim { stroke: var(--edge); }
+  .zone.on .rim { stroke: var(--ink); stroke-width: 1.4; }
+  .zone .kit, .zone .ghost { fill: none; stroke-linejoin: round; stroke-linecap: round; }
+  .zone .ghost { stroke: var(--lo); stroke-width: 0.9; }
+  .zone .kit { stroke-linecap: butt; vector-effect: none; stroke: var(--edge); stroke-width: 0.75; stroke-dasharray: 1 1; stroke-dashoffset: 1; transition: stroke-dashoffset 900ms cubic-bezier(.32,.72,0,1); }
+  .zone .kit.hi { stroke: var(--ink); }
+  .zone.on .kit { stroke-dashoffset: 0; }
+  .zone .name { font: 600 21px var(--sans); fill: var(--muted); letter-spacing: -0.01em; transition: fill 260ms ease; }
+  .zone.on .name { fill: var(--ink); }
+  .zone .line { font: 400 12.5px var(--mono); fill: var(--muted); opacity: 0; transform: translateY(4px); transition: opacity 360ms ease, transform 360ms cubic-bezier(.32,.72,0,1); }
+  .zone .status { fill: var(--ink); }
+  .zone .pip { fill: var(--ink); }
+  .zone.on .line { opacity: 1; transform: none; }
+  .plan.picked .zone:not(.on) .name { fill: var(--mid); }
+  .hint { font: 400 11px var(--mono); fill: var(--muted); letter-spacing: 0.14em; transition: opacity 300ms ease; }
+  .plan.picked .hint { opacity: 0; }
+  @media (prefers-reduced-motion: reduce) {
+    .zone .kit, .zone .line { transition: none; }
+  }
+</style>
+</head>
+<script>
+  (() => { const q = new URLSearchParams(location.search); const r = document.documentElement;
+    r.setAttribute("data-theme", q.get("theme") || "dark");
+    const g = q.get("ground"); if (g) r.style.setProperty("--ground", "#" + g);
+    const ink = q.get("ink"); if (ink) r.style.setProperty("--ink", "#" + ink); })();
+</script>
+<body>
+<div class="wrap">
+  <svg class="plan" id="plan" viewBox="0 0 1000 600" role="application" aria-label="Floor plan of the Proton lab hall. Pick a zone to see what is in it."></svg>
+</div>
+<script>
+(() => {
+  // Zones in plan units (about 25.5 units to the metre). Each lists its kit as shapes and its notes.
+  const ZONES = [
+    { id: "machines", name: "Machine shop", x: 60, y: 60, w: 380, h: 230,
+      lines: ["Mill", "Lathe", "Bench grinder", "Drill and rotary tools"], status: "Supervised use",
+      kit: [
+        ["rect", 330, 80, 75, 62, 6], ["rect", 340, 88, 26, 46, 4, "hi"], ["circle", 385, 111, 9], ["circle", 385, 111, 3],
+        ["rect", 250, 222, 172, 40, 6], ["rect", 250, 216, 36, 52, 5, "hi"], ["circle", 298, 242, 13], ["rect", 311, 239, 72, 6, 3],
+        ["rect", 330, 228, 18, 28, 3], ["rect", 386, 226, 26, 32, 4],
+        ["rect", 80, 236, 72, 30, 5], ["circle", 92, 251, 10], ["circle", 140, 251, 10],
+      ] },
+    { id: "maker", name: "Maker space", x: 60, y: 310, w: 380, h: 230,
+      lines: ["3 × Bambu A2L printers", "Soldering stations, hot air", "Bench power supply, scope", "Hand tool wall"], status: "Open in staffed hours",
+      kit: [
+        ...[315, 362, 409].flatMap((x, i) => [["rect", x - 22, 326, 44, 44, 6, i === 1 ? "hi" : ""], ["rect", x - 14, 334, 28, 28, 3]]),
+        ["rect", 292, 420, 134, 50, 6], ["circle", 312, 437, 6], ["circle", 342, 437, 6], ["circle", 372, 437, 6], ["rect", 395, 428, 22, 16, 3],
+        ["rect", 304, 452, 108, 10, 3],
+        ["rect", 72, 506, 200, 14, 3], ...[0, 1, 2, 3, 4, 5, 6].map((i) => ["rect", 84 + i * 26, 500, 10, 6, 2]),
+      ] },
+    { id: "lab", name: "Robotics lab", x: 460, y: 60, w: 480, h: 320,
+      lines: ["Robot arm cell", "Mobile robot test area", "Wet bench, glassware", "Workstations"], status: "Project teams, ask staff",
+      kit: [
+        ["rect", 880, 80, 44, 282, 6], ...[110, 150, 190, 230].map((y) => ["circle", 902, y, 9]), ["rect", 890, 270, 24, 70, 4],
+        ["circle", 745, 225, 24], ["circle", 745, 225, 12], ["capsule", 745, 225, 812, 186, 15, "hi"], ["capsule", 812, 186, 846, 222, 12, "hi"], ["circle", 812, 186, 8],
+        ["rect", 838, 218, 18, 16, 3], ["circle", 850, 240, 6],
+        ["rect", 480, 292, 170, 50, 6], ["rect", 500, 300, 52, 8, 3], ["rect", 576, 300, 52, 8, 3], ["circle", 526, 358, 9], ["circle", 602, 358, 9],
+        ["rect", 735, 318, 60, 38, 10], ["rect", 728, 322, 7, 12, 2], ["rect", 795, 322, 7, 12, 2], ["rect", 728, 340, 7, 12, 2], ["rect", 795, 340, 7, 12, 2], ["circle", 755, 337, 7],
+      ] },
+    { id: "lounge", name: "Lounge", x: 460, y: 400, w: 480, h: 140,
+      lines: ["Sofa seating", "Low table", "Info kiosk"], status: "Open to all",
+      kit: [
+        ["rect", 700, 414, 170, 26, 8], ["rect", 700, 440, 28, 84, 8], ["rect", 730, 444, 136, 4, 2],
+        ["circle", 800, 488, 24], ["circle", 800, 488, 14],
+        ["rect", 892, 462, 30, 56, 6, "hi"], ["rect", 898, 470, 18, 30, 3],
+      ] },
+  ];
+  const NS = "http://www.w3.org/2000/svg", svg = document.getElementById("plan");
+  const el = (tag, attrs, parent) => { const n = document.createElementNS(NS, tag); for (const k in attrs) n.setAttribute(k, attrs[k]); (parent || svg).appendChild(n); return n; };
+  const rr = (x, y, w, h, r) => `M${x + r},${y}H${x + w - r}A${r},${r} 0 0 1 ${x + w},${y + r}V${y + h - r}A${r},${r} 0 0 1 ${x + w - r},${y + h}H${x + r}A${r},${r} 0 0 1 ${x},${y + h - r}V${y + r}A${r},${r} 0 0 1 ${x + r},${y}Z`;
+  /** A link of a robot arm, seen from above: a capsule from (a) to (b), w wide. */
+  function capsule(ax, ay, bx, by, w) {
+    const L = Math.hypot(bx - ax, by - ay), ux = (bx - ax) / L, uy = (by - ay) / L, nx = -uy * w / 2, ny = ux * w / 2, r = w / 2;
+    return `M${ax + nx},${ay + ny}L${bx + nx},${by + ny}A${r},${r} 0 0 0 ${bx - nx},${by - ny}L${ax - nx},${ay - ny}A${r},${r} 0 0 0 ${ax + nx},${ay + ny}Z`;
+  }
+  const shape = (s) => s[0] === "circle" ? `M${s[1] - s[3]},${s[2]}a${s[3]},${s[3]} 0 1 0 ${2 * s[3]},0a${s[3]},${s[3]} 0 1 0 ${-2 * s[3]},0Z`
+    : s[0] === "capsule" ? capsule(s[1], s[2], s[3], s[4], s[5]) : rr(s[1], s[2], s[3], s[4], Math.min(s[5], s[3] / 2, s[4] / 2));
+  const centre = (s) => s[0] === "circle" ? [s[1], s[2]] : s[0] === "capsule" ? [(s[1] + s[3]) / 2, (s[2] + s[4]) / 2] : [s[1] + s[3] / 2, s[2] + s[4] / 2];
+
+  // The hall: structural grid behind, a double wall, columns, and the entrance with its door swing.
+  const HX0 = 40, HY0 = 40, HX1 = 960, HY1 = 560, COLS = [40, 270, 500, 730, 960], ROWS = [40, 300, 560];
+  COLS.forEach((x, i) => { el("line", { x1: x, y1: 22, x2: x, y2: 578, class: "axis" }); el("text", { x: x, y: 16, class: "tick", "text-anchor": "middle" }).textContent = "ABCDE"[i]; });
+  ROWS.forEach((y, i) => { el("line", { x1: 22, y1: y, x2: 978, y2: y, class: "axis" }); el("text", { x: 12, y: y + 3.5, class: "tick", "text-anchor": "middle" }).textContent = i + 1; });
+  el("path", { d: rr(HX0, HY0, HX1 - HX0, HY1 - HY0, 10) + rr(HX0 + 7, HY0 + 7, HX1 - HX0 - 14, HY1 - HY0 - 14, 5), class: "wall" });
+  el("rect", { x: 600, y: HY1 - 8, width: 80, height: 16, fill: "var(--ground)" });
+  el("path", { d: "M600,553V567M680,553V567M600,557H643M637,563H680", class: "door" });
+  const zoneLayer = el("g", {});
+  COLS.slice(1, -1).forEach((x) => ROWS.forEach((y) => (y > 40 && y < 560) && el("rect", { x: x - 5, y: y - 5, width: 10, height: 10, rx: 2, class: "col" })));
+  el("text", { x: 960, y: 594, class: "meta", "text-anchor": "end" }).textContent = "HALLE PHYSIK · EBENE 2 · ~648 M²";
+  const scale = el("g", {}); el("path", { d: "M40,586V592H168V586M104,589V592", class: "door" }, scale);
+  el("text", { x: 40, y: 584, class: "meta" }, scale).textContent = "0"; el("text", { x: 168, y: 584, class: "meta", "text-anchor": "end" }, scale).textContent = "5 M";
+  const hint = el("text", { x: 500, y: 594, class: "hint", "text-anchor": "middle" }); hint.textContent = "TAP A ZONE";
+
+  const zones = ZONES.map((z) => {
+    const g = el("g", { class: "zone", tabindex: 0, role: "button", "aria-label": z.name, "aria-pressed": "false" }, zoneLayer);
+    el("path", { d: rr(z.x, z.y, z.w, z.h, 8), class: "hit" }, g);
+    el("path", { d: rr(z.x, z.y, z.w, z.h, 8), class: "rim" }, g);
+    const kit = z.kit.map((s) => {
+      el("path", { d: shape(s), class: "ghost" }, g);
+      return { s, p: el("path", { d: shape(s), class: "kit" + (s[s.length - 1] === "hi" ? " hi" : ""), pathLength: 1 }, g) };
+    });
+    const tx = z.x + 20;
+    el("text", { x: tx, y: z.y + 36, class: "name" }, g).textContent = z.name;
+    const lines = z.lines.map((t, i) => { const n = el("text", { x: tx, y: z.y + 62 + i * 19, class: "line" }, g); n.textContent = t; return n; });
+    const sy = z.y + 62 + z.lines.length * 19 + 12;
+    const st = el("g", { class: "line status" }, g);
+    el("circle", { cx: tx + 4, cy: sy - 4, r: 3.2, class: "pip" }, st);
+    el("text", { x: tx + 14, y: sy, class: "line status", style: "opacity:1;transform:none" }, st).textContent = z.status;
+    lines.push(st);
+    return { z, g, kit, lines };
+  });
+
+  let picked = null, timer = 0;
+  /** Picks zone k (null puts the plan back to rest). Its kit draws in outwards from where it was touched, its notes follow. */
+  function pick(k, at) {
+    clearTimeout(timer);
+    if (k === picked) k = null;
+    picked = k;
+    svg.classList.toggle("picked", k !== null);
+    zones.forEach((zz, i) => {
+      const on = i === k;
+      zz.g.classList.toggle("on", on);
+      zz.g.setAttribute("aria-pressed", String(on));
+      const o = at || [zz.z.x + zz.z.w / 2, zz.z.y + zz.z.h / 2];
+      zz.kit.forEach(({ s, p }) => { const c = centre(s); p.style.transitionDelay = on ? Math.round(Math.hypot(c[0] - o[0], c[1] - o[1]) * 1.6) + "ms" : "0ms"; });
+      zz.lines.forEach((n, j) => { n.style.transitionDelay = on ? 260 + j * 70 + "ms" : "0ms"; });
+    });
+    if (k !== null) timer = setTimeout(() => pick(null), 30000);
+  }
+  const toPlan = (e) => { const m = svg.getScreenCTM(); if (!m) return null; const p = new DOMPoint(e.clientX, e.clientY).matrixTransform(m.inverse()); return [p.x, p.y]; };
+  zones.forEach((zz, i) => {
+    zz.g.addEventListener("click", (e) => { e.stopPropagation(); pick(i, toPlan(e)); });
+    zz.g.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); pick(i); } if (e.key === "Escape") pick(null); });
+  });
+  svg.addEventListener("click", () => pick(null));
+  // Start with the robotics lab open, so the first frame shows what a zone holds.
+  pick(2);
+})();
+</script>
+<script>
+  (() => {
+    let real = 0, k = -1;
+    ["pointerdown", "keydown"].forEach((t) => addEventListener(t, (e) => { if (e.isTrusted) real = Date.now(); }, true));
+    setInterval(() => {
+      if (Date.now() - real < 12000) return;
+      const zones = Array.from(document.querySelectorAll("#plan .zone"));
+      if (!zones.length) return;
+      k = (k + 1) % zones.length;
+      const r = zones[k].getBoundingClientRect();
+      zones[k].dispatchEvent(new MouseEvent("click", { bubbles: true, clientX: r.left + r.width / 2, clientY: r.top + r.height / 2 }));
+    }, 3800);
+  })();
+</script>
+</body>
+</html>
