@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Proton Hall Map</title>
 <link rel="icon" href="data:,">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@600;800&display=swap">
 <style>
   :root { color-scheme: light; --ground: #ffffff; --ink: #232327; --muted: #6f6f78; --line: #e0e0e4; }
   @media (prefers-color-scheme: dark) {
@@ -36,11 +37,14 @@
   :root:root:root { --ground: #111214; --line: #3c3d44; --muted: #9fa1aa; }
   html, body { height: 100%; }
   body { padding: 0 !important; display: grid !important; place-items: center; overflow: hidden; background: var(--ground); touch-action: none; }
-  .hero { width: min(100vw, 125vh) !important; max-width: none !important; }
+  .hero { width: min(72vw, 125vh) !important; max-width: none !important; transform: translate(7vw, -5vh); }
   .hint { display: none !important; }
   .callout { opacity: 0.4; }
   .callout.on { opacity: 1; transition-delay: 0ms; }
-  .callout b { font-weight: 400 !important; }
+  .callout b { font-family: "Archivo", system-ui, sans-serif; font-weight: 800 !important; font-size: 3.4cqw; letter-spacing: -0.035em; color: #f2f4f7; }
+  .callout span { font-family: "Archivo", system-ui, sans-serif; font-weight: 600; font-size: 1.25cqw; letter-spacing: 0.22em; text-transform: uppercase; top: calc(100% + 1.2cqw); }
+  .callout { padding-bottom: 0.9cqw; }
+  .callout.right span { left: auto; right: 0; width: max-content; }
 </style>
 <script>
   const say = (m) => { try { parent.postMessage(m, "*"); } catch (e) {} };
@@ -645,9 +649,9 @@ var HL = (() => {
 (() => {
   /* Each zone's title, where its callout's tail runs in the 400 × 320 viewBox (x0 to x1 at y), and which end the title hangs from. */
   const ZONES = {
-    machines: { title: "Machine shop", sub: "mill · lathe",             x0: 176, x1: 250, y: 44, align: "left" },
-    maker:    { title: "Maker space",  sub: "3D printing · hand tools", x0: 36,  x1: 112, y: 54, align: "left" },
-    lab:      { title: "Robotics lab", sub: "robot arm · lab bench",    x0: 276, x1: 352, y: 72, align: "left" },
+    machines: { title: "Machine shop", sub: "mill · lathe",             x0: -70, x1: 40, y: 100, align: "left" },
+    maker:    { title: "Maker space",  sub: "3D printing · hand tools", x0: -70, x1: 40, y: 170, align: "left" },
+    lab:      { title: "Robotics lab", sub: "robot arm · lab bench",    x0: -70, x1: 40, y: 240, align: "left" },
   };
   const box = document.getElementById("callouts"), els = {};
   for (const [k, z] of Object.entries(ZONES)) {
@@ -767,20 +771,18 @@ const ITEMS = [
 ];
 const ARM = [14, 15, 17, 18]; // the lab zone's robot arm: upper arm, elbow, forearm, wrist
 // Callouts: a world anchor on the zone's tile edge, then the elbow and tail end in the viewBox. The page writes the zone's title over the tail.
-const CALL = [[83, 3, 250, 44, 176, 44], [3, 127, 36, 54, 112, 54], [167, 3, 352, 72, 276, 72]];
+const CALL = [[3, 40, 40, 100, -70, 100], [3, 100, 40, 170, -70, 170], [88, 126, 40, 240, -70, 240]];
 
 function mount({ stage, svg, read }, value) {
   const bag = disposer();
   let lift = value;
-  // Fitted to every zone lifted to the slider's far end, so nothing leaves the frame in any pose.
   const C = Cam(45, 0.5, 1.36), pts = [[0, 0, -5], [HX, 0, -5], [0, HY, -5], [HX, HY, -5]];
   ZONES.forEach((z, k) => {
     const top = LMAX + T + Math.max(...ITEMS[k].map((it) => it.z1));
     pts.push([z.x0, z.y0, top], [z.x1, z.y0, top], [z.x0, z.y1, top], [z.x1, z.y1, top]);
   });
   fit(C, pts, 200, 166);
-  const P = proj(C), front = facing(C);
-  /** Item it's silhouette and crease with its tile's top at height b. */
+  const P = proj(C), front = facing(C), ZF = Math.sqrt(1 - C.k * C.k);
   function shape(it, b) {
     if (it.k === "h") {
       const at = (a, R) => Array.from({ length: 24 }, (_, i) => {
@@ -795,60 +797,36 @@ function mount({ stage, svg, read }, value) {
     };
     return prism(P, front, it.ring, it.inner, b + it.z0, b + it.z1);
   }
+  const onFace = (it, side, u, v, b) => (side === "y" ? P(u, it.y1, b + it.z0 + v) : P(it.x1, u, b + it.z0 + v));
   const g = mk("g", {}, svg);
   const [sr, si] = rings(0, 0, HX, HY, 8, 2);
   reflect(svg, g, P, front, sr, -5, 14);
   put(solid(g), prism(P, front, sr, si, -5, 0));
+  // Each zone is drawn once on its own layer; lifting is a compositor-only CSS transform, so nothing redraws per frame.
+  const pct = (h) => "translate3d(0," + (-(h * ZF * C.S) / 320 * 100).toFixed(3) + "%,0)";
   const zones = ZONES.map((z, k) => {
-    const zg = mk("g", {}, g);
+    const zs = mk("svg", { viewBox: "0 0 400 320", "aria-hidden": "true" }, stage);
+    zs.style.cssText = "will-change:transform;backface-visibility:hidden;pointer-events:none;transition:transform 700ms cubic-bezier(.32,.72,0,1);transform:" + pct(z.rest);
+    const zg = mk("g", {}, zs);
     const [ring, inner] = rings(z.x0, z.y0, z.x1, z.y1, 5, 1.6);
-    const drops = mk("path", { class: "nf dash" }, zg), tile = solid(zg);
-    const items = ITEMS[k].map((it) => {
-      const el = solid(zg), [r0, r1] = it.k === "b" ? rings(it.x0, it.y0, it.x1, it.y1, it.r, it.b) : [];
-      return {
-        ...it, ring: r0, inner: it.inner ?? r1, el,
-        fs: it.faces.map(() => mk("path", { class: "nf lo" }, el.g)),
-        hs: it.holes.map(() => mk("circle", { r: 0.7, class: "dot off" }, el.g)),
-      };
+    const tile = solid(zg);
+    put(tile, prism(P, front, ring, inner, 0, T));
+    const els = ITEMS[k].map((it0) => {
+      const el = solid(zg), [r0, r1] = it0.k === "b" ? rings(it0.x0, it0.y0, it0.x1, it0.y1, it0.r, it0.b) : [];
+      const it = { ...it0, ring: r0, inner: it0.inner ?? r1 };
+      put(el, shape(it, T));
+      it.faces.forEach(([side, u0, v0, u1, v1, r]) => mk("path", { class: "nf lo", d: poly(rrect(u0, v0, u1, v1, r, 4).map((q) => onFace(it, side, q.u, q.v, T))) }, el.g));
+      it.holes.forEach(([side, u, v]) => place(mk("circle", { r: 0.7, class: "dot off" }, el.g), onFace(it, side, u, v, T)));
+      return el;
     });
-    return { ...z, ring, inner, drops, tile, items, tw: tween(z.rest), drawn: NaN };
+    return { ...z, zs, tile, els };
   });
-  const lead = mk("path", { class: "nf sil" }, g), pin = mk("circle", { r: 0, class: "dot" }, g);
-  let rev = tween(0), act = -1;
-  /** The callout to the zone picked: it draws out from the anchor, which rides the tile. */
-  function drawLead(now) {
-    if (act < 0) { lead.setAttribute("d", ""); pin.setAttribute("r", 0); return; }
-    const [x, y, ex, ey, fx, fy] = CALL[act], a = P(x, y, zones[act].drawn + T), t = tval(rev, now);
-    const m = (p, q, s) => [lerp(p[0], q[0], s), lerp(p[1], q[1], s)], s2 = clamp((t - 0.6) / 0.4, 0, 1);
-    lead.setAttribute("d", open(s2 > 0 ? [a, [ex, ey], m([ex, ey], [fx, fy], s2)] : [a, m(a, [ex, ey], t / 0.6)]));
-    place(pin, a); pin.setAttribute("r", 1.6);
-  }
-  const mark = ARM.map((i) => zones[2].items[i].el.sil);
+  const over = mk("svg", { viewBox: "0 0 400 320", "aria-hidden": "true" }, stage);
+  over.style.cssText = "pointer-events:none;overflow:visible;opacity:0;transition:opacity 220ms ease";
+  const lead = mk("path", { class: "nf sil" }, over), pin = mk("circle", { r: 1.6, class: "dot" }, over);
+  const mark = ARM.map((i) => zones[2].els[i].sil);
   mark.forEach((s) => s.classList.add("hi"));
-  /** A point on item it's +x or +y face, u along the face and v up from its foot. */
-  const onFace = (it, side, u, v, b) => (side === "y" ? P(u, it.y1, b + it.z0 + v) : P(it.x1, u, b + it.z0 + v));
-  /** Redraws zone z at height h over the floor; a zone whose height has not changed keeps its paths. */
-  function draw(z, h) {
-    if (h === z.drawn) return;
-    z.drawn = h;
-    z.drops.setAttribute("d", h < 0.5 ? "" : extremes(P, z.ring).map((q) => seg(P(q.u, q.v, 0), P(q.u, q.v, h))).join(""));
-    put(z.tile, prism(P, front, z.ring, z.inner, h, h + T));
-    const b = h + T;
-    for (const it of z.items) {
-      put(it.el, shape(it, b));
-      it.faces.forEach(([side, u0, v0, u1, v1, r], k) =>
-        it.fs[k].setAttribute("d", poly(rrect(u0, v0, u1, v1, r, 4).map((q) => onFace(it, side, q.u, q.v, b)))));
-      it.holes.forEach(([side, u, v], k) => place(it.hs[k], onFace(it, side, u, v, b)));
-    }
-  }
-  const B = register(stage, (_dt, now) => {
-    let moving = false;
-    for (const z of zones) { draw(z, tval(z.tw, now)); if (!tdone(z.tw, now)) moving = true; }
-    drawLead(now);
-    return moving || !tdone(rev, now);
-  });
-  bag.add(B.unregister);
-  /** The zone under the point, tested on each tile's resting top, nearest zone first; -1 outside. */
+  let act = -1;
   function hit([sx, sy]) {
     for (let k = zones.length - 1; k >= 0; k--) {
       const z = zones[k], [x, y] = unproj(C, sx, sy, z.rest + T + 6);
@@ -856,27 +834,27 @@ function mount({ stage, svg, read }, value) {
     }
     return -1;
   }
-  /** Picks zone a (-1 sets the plan back to rest). The stagger spreads out from the zone picked, or the one let go. */
   function setActive(a, force) {
     if (a === act && !force) return;
-    const now = performance.now(), from = a >= 0 ? a : act >= 0 ? act : 2;
-    if (a !== act) { rev = tween(0); tset(rev, 1, now, 0); }
+    const from = a >= 0 ? a : act >= 0 ? act : 2;
     act = a;
     zones.forEach((z, k) => {
       const d = Math.abs(z.gx - zones[from].gx) + Math.abs(z.gy - zones[from].gy);
-      tset(z.tw, a < 0 ? z.rest : k === a ? lift : 0, now, d * STEP);
+      z.zs.style.transitionDelay = d * STEP + "ms";
+      z.zs.style.transform = pct(a < 0 ? z.rest : k === a ? lift : 0);
       z.tile.sil.classList.toggle("hi", k === a);
     });
     mark.forEach((s) => s.classList.toggle("hi", a < 0));
+    if (a >= 0) {
+      const [x, y, ex, ey, fx, fy] = CALL[a], p = P(x, y, lift + T);
+      lead.setAttribute("d", open([p, [ex, ey], [fx, fy]])); place(pin, p);
+      over.style.transitionDelay = "420ms"; over.style.opacity = "1";
+    } else { over.style.transitionDelay = "0ms"; over.style.opacity = "0"; }
     read.textContent = a < 0 ? "rest" : zones[a].name;
-    B.wake();
   }
   bag.add(pointer(stage, { move: (p) => setActive(hit(p)), leave: () => setActive(-1) }));
-  bag.add(() => svg.replaceChildren());
-  return {
-    set: (v) => { lift = v; if (act >= 0) setActive(act, true); },
-    destroy: bag.dispose,
-  };
+  bag.add(() => { zones.forEach((z) => z.zs.remove()); over.remove(); svg.replaceChildren(); });
+  return { set: (v) => { lift = v; if (act >= 0) setActive(act, true); }, destroy: bag.dispose };
 }
 
 hairline({
