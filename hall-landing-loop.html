@@ -712,8 +712,6 @@ const ITEMS = [
 
 function mount({ stage, svg, read }, value) {
   const bag = disposer();
-  let lift = value;
-  // Fitted to every zone lifted to the slider's far end, so nothing leaves the frame in any pose.
   const C = Cam(45, 0.5, 1.36), pts = [[0, 0, -5], [HX, 0, -5], [0, HY, -5], [HX, HY, -5]];
   ZONES.forEach((z, k) => {
     const top = LMAX + T + Math.max(...ITEMS[k].map((it) => it.z1));
@@ -721,7 +719,6 @@ function mount({ stage, svg, read }, value) {
   });
   fit(C, pts, 200, 166);
   const P = proj(C), front = facing(C);
-  /** Item it's silhouette and crease with its tile's top at height b. */
   function shape(it, b) {
     if (it.k === "h") {
       const at = (a, R) => Array.from({ length: 24 }, (_, i) => {
@@ -736,76 +733,35 @@ function mount({ stage, svg, read }, value) {
     };
     return prism(P, front, it.ring, it.inner, b + it.z0, b + it.z1);
   }
+  const onFace = (it, side, u, v, b) => (side === "y" ? P(u, it.y1, b + it.z0 + v) : P(it.x1, u, b + it.z0 + v));
   const g = mk("g", {}, svg);
   const [sr, si] = rings(0, 0, HX, HY, 8, 2);
   reflect(svg, g, P, front, sr, -5, 14);
   put(solid(g), prism(P, front, sr, si, -5, 0));
-  const zones = ZONES.map((z, k) => {
-    const zg = mk("g", {}, g);
+  // Drawn once. Each zone is its own layer, moved by a compositor-only CSS transform: no per-frame redraw.
+  const amp = (value * Math.sqrt(1 - C.k * C.k) * C.S / 320) * 100;
+  const st = document.createElement("style");
+  st.textContent = "@keyframes hlwave{0%,100%{transform:translate3d(0,0,0)}50%{transform:translate3d(0,-" + amp.toFixed(2) + "%,0)}}";
+  document.head.appendChild(st);
+  const layers = ZONES.map((z, k) => {
+    const zs = mk("svg", { viewBox: "0 0 400 320", "aria-hidden": "true" }, stage);
+    zs.style.cssText = "will-change:transform;backface-visibility:hidden;animation:hlwave " + LOOP + "ms ease-in-out " + (-((3 - k) % 3) * LOOP / 3) + "ms infinite";
+    if (reducedMotion()) zs.style.animation = "none";
+    const zg = mk("g", {}, zs);
     const [ring, inner] = rings(z.x0, z.y0, z.x1, z.y1, 5, 1.6);
-    const drops = mk("path", { class: "nf dash" }, zg), tile = solid(zg);
-    const items = ITEMS[k].map((it) => {
-      const el = solid(zg), [r0, r1] = it.k === "b" ? rings(it.x0, it.y0, it.x1, it.y1, it.r, it.b) : [];
-      return {
-        ...it, ring: r0, inner: it.inner ?? r1, el,
-        fs: it.faces.map(() => mk("path", { class: "nf lo" }, el.g)),
-        hs: it.holes.map(() => mk("circle", { r: 0.7, class: "dot off" }, el.g)),
-      };
-    });
-    return { ...z, ring, inner, drops, tile, items, drawn: NaN };
-  });
-  /** A point on item it's +x or +y face, u along the face and v up from its foot. */
-  const onFace = (it, side, u, v, b) => (side === "y" ? P(u, it.y1, b + it.z0 + v) : P(it.x1, u, b + it.z0 + v));
-  /** Redraws zone z at height h over the floor; a zone whose height has not changed keeps its paths. */
-  function draw(z, h) {
-    if (h === z.drawn) return;
-    z.drawn = h;
-    z.drops.setAttribute("d", h < 0.5 ? "" : extremes(P, z.ring).map((q) => seg(P(q.u, q.v, 0), P(q.u, q.v, h))).join(""));
-    put(z.tile, prism(P, front, z.ring, z.inner, h, h + T));
-    const b = h + T;
-    for (const it of z.items) {
-      put(it.el, shape(it, b));
-      it.faces.forEach(([side, u0, v0, u1, v1, r], k) =>
-        it.fs[k].setAttribute("d", poly(rrect(u0, v0, u1, v1, r, 4).map((q) => onFace(it, side, q.u, q.v, b)))));
-      it.holes.forEach(([side, u, v], k) => place(it.hs[k], onFace(it, side, u, v, b)));
+    put(solid(zg), prism(P, front, ring, inner, 0, T));
+    for (const it0 of ITEMS[k]) {
+      const el = solid(zg), [r0, r1] = it0.k === "b" ? rings(it0.x0, it0.y0, it0.x1, it0.y1, it0.r, it0.b) : [];
+      const it = { ...it0, ring: r0, inner: it0.inner ?? r1 };
+      put(el, shape(it, T));
+      it.faces.forEach(([side, u0, v0, u1, v1, r]) => mk("path", { class: "nf lo", d: poly(rrect(u0, v0, u1, v1, r, 4).map((q) => onFace(it, side, q.u, q.v, T))) }, el.g));
+      it.holes.forEach(([side, u, v]) => place(mk("circle", { r: 0.7, class: "dot off" }, el.g), onFace(it, side, u, v, T)));
     }
-  }
-  let top = -1;
-  /** Gives the bright edge to zone a, the one nearest its crest, and names it. */
-  function crest(a) {
-    if (a === top) return;
-    top = a;
-    zones.forEach((z, k) => z.tile.sil.classList.toggle("hi", k === a));
-    say();
-  }
-  let over = false;
-  /** The read-out names the zone at the crest while a pointer is over the hall, and says rest otherwise. */
-  const say = () => { read.textContent = over && top >= 0 ? zones[top].name : "rest"; };
-  // The ambient loop: each zone on a raised cosine, a third of a loop apart. It sleeps
-  // offscreen with the frame loop; under reduced motion the hall holds its composed rest.
-  // Nobody needs to touch it; a pointer over the hall slows the wave to a quarter, on a spring.
-  const rate = spring(1);
-  let phase = 0;
-  const wave = (k) => 0.5 - 0.5 * Math.cos(2 * Math.PI * (phase - k / zones.length));
-  const B = register(stage, (dt) => {
-    if (reducedMotion()) { zones.forEach((z) => draw(z, z.rest)); crest(-1); return false; }
-    stepS(rate, dt);
-    phase = (phase + (dt * 1000 * rate.x) / LOOP) % 1;
-    let best = 0;
-    zones.forEach((z, k) => {
-      draw(z, Math.round(lift * wave(k) * 100) / 100);
-      if (wave(k) > wave(best)) best = k;
-    });
-    crest(best);
-    return true;
+    return zs;
   });
-  bag.add(B.unregister);
-  bag.add(pointer(stage, { move: () => { over = true; rate.t = 0.25; say(); B.wake(); }, leave: () => { over = false; rate.t = 1; say(); B.wake(); } }));
-  bag.add(() => svg.replaceChildren());
-  return {
-    set: (v) => { lift = v; B.wake(); },
-    destroy: bag.dispose,
-  };
+  read.textContent = "rest";
+  bag.add(() => { layers.forEach((s) => s.remove()); svg.replaceChildren(); st.remove(); });
+  return { set: () => {}, destroy: bag.dispose };
 }
 
 hairline({
