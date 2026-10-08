@@ -30,6 +30,12 @@
 <script>
   addEventListener("pointerup", (e) => { if (!e.isTrusted) return; setTimeout(() => { try { parent.postMessage("proton-hall-tap", "*"); } catch (e) {} }, 250); });
 </script>
+<style id="kiosk-force-dark">
+  :root, :root[data-theme] { color-scheme: dark !important; --ink: #d0d6e0 !important; --muted: #9fa1aa !important; }
+  [data-hairline] { --hairline-plate: var(--ground); --hairline-hi: #d0d6e0; --hairline-edge: #5b5d64; --hairline-mid: #3e3e44; --hairline-lo: #29292d; }
+  [data-hairline] svg * { transition: none !important; }
+</style>
+<script>document.documentElement.setAttribute("data-theme","dark");</script>
 </head>
 <body>
 <div class="hero">
@@ -429,6 +435,7 @@ var HL = (() => {
   var io = null;
   var rm = null;
   function frame(now) {
+    if (now - last < 32) { raf = requestAnimationFrame(frame); return; } /*__fpsCap*/
     const dt = Math.min(0.05, Math.max(0, (now - last) / 1e3));
     last = now;
     let any = false;

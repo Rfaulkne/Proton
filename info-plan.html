@@ -50,6 +50,12 @@
     .zone .kit, .zone .line { transition: none; }
   }
 </style>
+<style id="kiosk-force-dark">
+  :root, :root[data-theme] { color-scheme: dark !important; --ink: #d0d6e0 !important; --muted: #9fa1aa !important; }
+  [data-hairline] { --hairline-plate: var(--ground); --hairline-hi: #d0d6e0; --hairline-edge: #5b5d64; --hairline-mid: #3e3e44; --hairline-lo: #29292d; }
+  [data-hairline] svg * { transition: none !important; }
+</style>
+<script>document.documentElement.setAttribute("data-theme","dark");</script>
 </head>
 <script>
   (() => { const q = new URLSearchParams(location.search); const r = document.documentElement;
