@@ -57,6 +57,8 @@
   .tag.sel b { color: #eef0f4; } .tag.sel span { color: #a4a6ae; }
   .stage.has-sel .tag:not(.sel):not(.hov) b { color: #55575f; }
   @media (prefers-reduced-motion: reduce) { .isle, .glow, .layer { animation: none; } .glow { opacity: .7; } .lift { transition: none; } }
+  html, body, body * { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent; }
+  .stage { touch-action: none; }
 </style>
 </head>
 <body>
@@ -105,9 +107,17 @@
     const z = h.dataset.zone;
     h.addEventListener("pointerenter", (e) => { if (e.pointerType !== "touch") hover(z); });
     h.addEventListener("pointerleave", () => { if (hov === z) hover(null); });
-    h.addEventListener("click", (e) => { e.stopPropagation(); tap(z); });
+    h.addEventListener("click", (e) => { e.stopPropagation(); if (e.pointerType && e.pointerType !== "mouse") return; tap(z); });
     h.addEventListener("keydown", (e) => { if ((e.key === "Enter" || e.key === " ") && h.tagName !== "BUTTON") { e.preventDefault(); tap(z); } if (e.key === "Escape") release(); });
   });
+  addEventListener("contextmenu", (e) => e.preventDefault());
+  addEventListener("selectstart", (e) => e.preventDefault());
+  let down = false;
+  const zoneAt = (e) => { const el = document.elementFromPoint(e.clientX, e.clientY); const p = el && el.closest(".hit, .tag"); return p ? p.dataset.zone : null; };
+  addEventListener("pointerdown", (e) => { if (e.pointerType === "mouse") return; down = true; hover(zoneAt(e)); });
+  addEventListener("pointermove", (e) => { if (down) hover(zoneAt(e)); });
+  addEventListener("pointerup", (e) => { if (!down) return; down = false; const z = zoneAt(e); hover(null); if (z && z !== sel) { engage(); select(z); } });
+  addEventListener("pointercancel", () => { down = false; hover(null); });
   addEventListener("message", (e) => {
     const d = e.data; if (!d || typeof d !== "object") return;
     if (d.type === "proton-zone-set") select(d.zone && parts[d.zone] ? d.zone : null, true);

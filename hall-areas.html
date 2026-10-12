@@ -57,6 +57,17 @@
   .hits { z-index: 3; } .hit { fill: transparent; stroke: none; cursor: pointer; pointer-events: all; outline: none; -webkit-tap-highlight-color: transparent; }
   .hit:focus-visible { stroke: var(--hi); stroke-width: .9; stroke-dasharray: 2 3; vector-effect: non-scaling-stroke; }
   @media (prefers-reduced-motion: reduce) { .isle, .glow, .layer { animation: none; } .glow { opacity: .7; } .lift { transition: none; } }
+  html, body, body * { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent; }
+  .stage { touch-action: none; }
+  .go { position: absolute; z-index: 5; right: 3%; bottom: 5%; display: flex; align-items: center; gap: 1.2cqw; border: 0; cursor: pointer;
+        padding: 1.5cqw 2.2cqw; background: var(--active); color: #000; font: 800 1.7cqw/1 "Archivo", ui-sans-serif, system-ui, sans-serif; letter-spacing: .12em; text-transform: uppercase;
+        opacity: 0; transform: translateY(1cqw); pointer-events: none; transition: opacity .3s, transform .3s; }
+  .go::after { content: "→"; font-size: 1.3em; letter-spacing: 0; }
+  .stage.has-sel .go { opacity: 1; transform: none; pointer-events: auto; }
+  .go.press { filter: brightness(1.15); transform: scale(.97); }
+  .hint { position: absolute; z-index: 5; right: 3%; bottom: calc(5% + 6cqw); font: 600 1.05cqw/1 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; letter-spacing: .14em; color: #8a8c95;
+          text-transform: uppercase; opacity: 0; transition: opacity .3s; pointer-events: none; }
+  .stage.has-sel .hint { opacity: 1; }
 </style>
 </head>
 <body>
@@ -72,64 +83,62 @@
   <svg class="hits" viewBox="0 0 400 225"><polygon class="hit" data-zone="machines" tabindex="0" role="button" aria-label="Machines" points="62.89,72.37 88.04,45.4 198.46,71.15 198.46,82.42 173.3,109.39 62.89,83.65"/><polygon class="hit" data-zone="maker" tabindex="0" role="button" aria-label="Maker space" points="19.09,108.34 43.06,82.63 109.65,98.16 109.65,109.43 85.67,135.14 19.09,119.61"/><polygon class="hit" data-zone="lab" tabindex="0" role="button" aria-label="Lab" points="91.12,124.62 113.92,100.18 284.18,139.87 284.18,151.15 261.38,175.59 91.12,135.9"/></svg>
   <button class="tag" data-zone="machines" style="left:2%;top:9.33%" aria-label="Machines"><b>Machines</b><span>waterjet · laser · mill · lathe</span></button>
   <button class="tag" data-zone="maker" style="left:2%;top:72.89%" aria-label="Maker space"><b>Maker space</b><span>tools · drill press · benches</span></button>
+  <div class="hint">or tap it again</div>
+  <button class="go" type="button">Enter</button>
   <button class="tag" data-zone="lab" style="left:40%;top:89.78%" aria-label="Lab"><b>Lab</b><span>robots · motion capture</span></button>
 </div>
 <script>
-/* Hover (or focus) an island or its label: the wave stops, the island lifts halfway and fills teal, the label brightens.
-   Tap either one: the island lifts fully, its label's rule turns teal and a dashed leader joins them. Tap again or the
-   floor to let go. After 30 s without input the wave resumes. A choice is announced as a "zoneselect" event
-   on the stage and as postMessage {type: "proton-zone", zone, selected} to a parent frame (zone: lab, machines, maker).
-   Put a URL per area in LINKS and a second tap on the chosen one opens it. */
+/* Touch or drag across the floor: the island under the finger lifts. Lift the finger on an island to choose it
+   (stays up, label and leader turn teal, an Enter button appears). Tap it again or Enter to go in.
+   Parent hears {type:"proton-zone", zone, selected} and {type:"proton-zone-open", zone}. */
 (() => {
-  const LINKS = { lab: "", machines: "", maker: "" };
-  const stage = document.querySelector(".stage"), parts = {}, isles = [], glows = [];
+  const stage = document.querySelector(".stage"), go = document.querySelector(".go"), parts = {}, isles = [], glows = [], names = {};
   document.querySelectorAll(".isle").forEach((el) => { isles.push(el); glows.push(el.querySelector(".glow")); });
   document.querySelectorAll("[data-zone]").forEach((el) => (parts[el.dataset.zone] ||= []).push(el));
-  const mark = (z, cls, on) => parts[z].forEach((el) => el.classList.toggle(cls, on));
-  let engaged = false, sel = null, hov = null, idle = 0, back = 0;
-  const freeze = (el, prop, t) => {                                   // stop the wave where it is, then ease to rest
-    const v = getComputedStyle(el)[prop];
-    el.style.animation = "none"; el.style[prop] = v; void el.offsetWidth;
-    el.style.transition = prop + " " + t; el.style[prop] = "";
-  };
+  document.querySelectorAll(".tag").forEach((t) => { names[t.dataset.zone] = t.getAttribute("aria-label"); });
+  const mark = (z, cls, on) => (parts[z] || []).forEach((el) => el.classList.toggle(cls, on));
+  let engaged = false, sel = null, hov = null, idle = 0, back = 0, down = false;
+  const say = (m) => { if (window.parent !== window) window.parent.postMessage(m, "*"); };
+  const freeze = (el, prop, t) => { const v = getComputedStyle(el)[prop]; el.style.animation = "none"; el.style[prop] = v; void el.offsetWidth; el.style.transition = prop + " " + t; el.style[prop] = ""; };
   const engage = () => {
     clearTimeout(back); clearTimeout(idle); idle = setTimeout(release, 30000);
     if (engaged) return; engaged = true;
     isles.forEach((el) => freeze(el, "transform", ".5s cubic-bezier(.3,0,.2,1)"));
     glows.forEach((el) => freeze(el, "opacity", ".4s"));
   };
-  const resume = () => {                                              // every island is at rest, so the wave restarts from the first
-    if (sel || hov) return;
-    engaged = false;
-    [...isles, ...glows].forEach((el) => { el.style.animation = el.style.transition = el.style.transform = el.style.opacity = ""; });
-  };
+  const resume = () => { if (sel || hov) return; engaged = false; [...isles, ...glows].forEach((el) => { el.style.animation = el.style.transition = el.style.transform = el.style.opacity = ""; }); };
   const later = (ms) => { clearTimeout(back); back = setTimeout(resume, ms); };
-  const announce = (zone, selected) => {
-    stage.dispatchEvent(new CustomEvent("zoneselect", { bubbles: true, detail: { zone, selected } }));
-    if (window.parent !== window) window.parent.postMessage({ type: "proton-zone", zone, selected }, "*");
-  };
   const select = (z) => {
-    if (sel) { mark(sel, "sel", false); announce(sel, false); }
+    if (sel === z) return;
+    if (sel) { mark(sel, "sel", false); say({ type: "proton-zone", zone: sel, selected: false }); }
     sel = z; stage.classList.toggle("has-sel", !!z);
-    if (z) { mark(z, "sel", true); announce(z, true); }
+    if (z) { engage(); mark(z, "sel", true); go.textContent = "Enter " + names[z]; say({ type: "proton-zone", zone: z, selected: true }); } else later(1500);
   };
-  const hover = (z) => { if (hov) mark(hov, "hov", false); hov = z; if (z) { engage(); mark(z, "hov", true); } else if (!sel) later(1500); };
+  const hover = (z) => { if (hov === z) return; if (hov) mark(hov, "hov", false); hov = z; if (z) { engage(); mark(z, "hov", true); } else if (!sel) later(1500); };
   function release() { select(null); hover(null); later(600); }
-  const tap = (z) => {
-    engage();
-    if (z === sel) { if (LINKS[z]) { location.href = LINKS[z]; return; } select(null); later(2500); }
-    else select(z);
-  };
-  document.querySelectorAll(".hit, .tag").forEach((h) => {
-    const z = h.dataset.zone;
-    h.addEventListener("pointerenter", (e) => { if (e.pointerType !== "touch") hover(z); });
-    h.addEventListener("pointerleave", () => { if (hov === z) hover(null); });
-    h.addEventListener("focus", () => hover(z));
-    h.addEventListener("blur", () => { if (hov === z) hover(null); });
-    h.addEventListener("click", (e) => { e.stopPropagation(); tap(z); });
-    h.addEventListener("keydown", (e) => { if ((e.key === "Enter" || e.key === " ") && h.tagName !== "BUTTON") { e.preventDefault(); tap(z); } if (e.key === "Escape") release(); });
+  const open = (z) => { if (!z) return; go.classList.add("press"); setTimeout(() => go.classList.remove("press"), 200); say({ type: "proton-zone-open", zone: z }); };
+  const zoneAt = (e) => { const el = document.elementFromPoint(e.clientX, e.clientY); const p = el && el.closest("[data-zone]"); return p ? p.dataset.zone : null; };
+  const onGo = (e) => { const el = document.elementFromPoint(e.clientX, e.clientY); return !!(el && el.closest(".go")); };
+  addEventListener("contextmenu", (e) => e.preventDefault());
+  addEventListener("selectstart", (e) => e.preventDefault());
+  addEventListener("pointerdown", (e) => { say({ proton: "touch" }); if (onGo(e)) return; down = true; hover(zoneAt(e)); });
+  addEventListener("pointermove", (e) => { if (down || e.pointerType === "mouse") hover(zoneAt(e)); });
+  addEventListener("pointerup", (e) => {
+    const wasDown = down; down = false;
+    if (onGo(e)) { open(sel); return; }
+    if (!wasDown) return;
+    const z = zoneAt(e);
+    if (e.pointerType !== "mouse") hover(null);
+    if (!z) { if (sel) select(null); return; }
+    if (z === sel) open(z); else select(z);
   });
-  document.addEventListener("click", () => { if (sel) { select(null); later(1500); } });
+  addEventListener("pointercancel", () => { down = false; hover(null); });
+  document.querySelectorAll(".hit, .tag").forEach((el) => el.addEventListener("keydown", (e) => {
+    const z = el.dataset.zone;
+    if (e.key === "Enter" || e.key === " ") { e.preventDefault(); z === sel ? open(z) : select(z); }
+    if (e.key === "Escape") release();
+  }));
+  go.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); open(sel); } });
 })();
 </script>
 </body>
